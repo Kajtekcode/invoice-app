@@ -1,47 +1,53 @@
 from flask import Flask, request
 import os
 import requests
-from invoice_tracker import process_invoice  # Assuming this function exists
-from dotenv import load_dotenv
-
-load_dotenv()
+from track_prices2 import process_invoice  # ✅ updated import
 
 app = Flask(__name__)
 
-@app.route("/", methods=["GET"])
-def home():
-    return "Invoice processing webhook is live."
-
-@app.route("/whatsapp", methods=["POST"])
+@app.route('/whatsapp', methods=['POST'])
 def webhook():
-    sender_number = request.form.get("From")
-    message_sid = request.form.get("MessageSid")
-    media_url = request.form.get("MediaUrl0")
-    message_body = request.form.get("Body")
-
-    print(f"Numer nadawcy: {sender_number}")
-    print(f"Treść wiadomości: {message_body}")
-    print(f"URL zdjęcia: {media_url}")
+    # Extract relevant info from WhatsApp message via Twilio
+    sender = request.form.get('From')
+    message_sid = request.form.get('MessageSid')
+    image_url = request.form.get('MediaUrl0')
+    
+    print(f"Numer nadawcy: {sender}")
     print(f"Message SID: {message_sid}")
+    print(f"URL zdjęcia: {image_url}")
 
-    if media_url:
-        try:
-            response = requests.get(media_url, auth=(os.getenv("TWILIO_SID"), os.getenv("TWILIO_AUTH_TOKEN")))
+    if not image_url:
+        return "No image found", 400
 
-            # Use safe temp directory
-            image_dir = "/tmp/invoices"
-            os.makedirs(image_dir, exist_ok=True)
+    # Set up temporary storage path
+    invoices_dir = "/tmp/invoices"
+    os.makedirs(invoices_dir, exist_ok=True)
 
-            image_path = os.path.join(image_dir, f"invoice_{message_sid}_N.jpg")
-            with open(image_path, 'wb') as f:
-                f.write(response.content)
+    filename = f"invoice_{message_sid}_N.jpg"
+    image_path = os.path.join(invoices_dir, filename)
 
-            print(f"Saved invoice to {image_path}")
+    # Download the image from Twilio
+    try:
+        response = requests.get(image_url, auth=(os.environ.get("TWILIO_SID"), os.environ.get("TWILIO_AUTH_TOKEN")))
+        response.raise_for_status()
+        with open(image_path, 'wb') as f:
+            f.write(response.content)
+    except Exception as e:
+        print(f"Error downloading image: {e}")
+        return "Failed to download image", 500
 
-            # Call your processing logic
-            process_invoice(image_path)
+    # Process the invoice using your function
+    try:
+        process_invoice(image_path)
+    except Exception as e:
+        print(f"Error processing invoice: {e}")
+        return "Invoice processing failed", 500
 
-        except Exception as e:
-            print(f"Error processing invoice: {e}")
+    return "Invoice received and processed", 200
 
-    return "OK", 200
+@app.route('/')
+def home():
+    return "Invoice Webhook is running!"
+
+if __name__ == '__main__':
+    app.run(debug=True)
