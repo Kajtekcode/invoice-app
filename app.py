@@ -1,47 +1,47 @@
 from flask import Flask, request
-import requests
 import os
+import requests
+from invoice_tracker import process_invoice  # Assuming this function exists
 from dotenv import load_dotenv
+
+load_dotenv()
 
 app = Flask(__name__)
 
-# Pobierz Account SID i Auth Token z zmiennych środowiskowych
-TWILIO_ACCOUNT_SID = os.environ.get("TWILIO_ACCOUNT_SID")
-TWILIO_AUTH_TOKEN = os.environ.get("TWILIO_AUTH_TOKEN")
+@app.route("/", methods=["GET"])
+def home():
+    return "Invoice processing webhook is live."
 
-if not TWILIO_ACCOUNT_SID or not TWILIO_AUTH_TOKEN:
-    raise ValueError("Ustaw zmienne środowiskowe TWILIO_ACCOUNT_SID i TWILIO_AUTH_TOKEN")
-
-@app.route('/whatsapp', methods=['POST'])
+@app.route("/whatsapp", methods=["POST"])
 def webhook():
-    # Pobierz dane z żądania Twilio
-    from_number = request.values.get('From')  # Numer nadawcy
-    body = request.values.get('Body', '').lower()  # Treść wiadomości
-    media_url = request.values.get('MediaUrl0')  # URL zdjęcia
-    message_sid = request.values.get('MessageSid')  # Unikalny ID wiadomości
+    sender_number = request.form.get("From")
+    message_sid = request.form.get("MessageSid")
+    media_url = request.form.get("MediaUrl0")
+    message_body = request.form.get("Body")
 
-    # Debug: Wypisz dane żądania
-    print(f"Numer nadawcy: {from_number}")
-    print(f"Treść wiadomości: {body}")
+    print(f"Numer nadawcy: {sender_number}")
+    print(f"Treść wiadomości: {message_body}")
     print(f"URL zdjęcia: {media_url}")
     print(f"Message SID: {message_sid}")
 
-    # Sprawdź, czy jest zdjęcie
     if media_url:
-        # Określ status płatności na podstawie treści wiadomości
-        paid_status = 'T' if 'faktura zapłacona' in body else 'N'
-        
-        # Pobierz zdjęcie z autentykacją
-        response = requests.get(media_url, auth=(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN))
-        if response.status_code == 200:
-            image_path = os.path.join('invoices', f'invoice_{message_sid}_{paid_status}.jpg')
+        try:
+            response = requests.get(media_url, auth=(os.getenv("TWILIO_SID"), os.getenv("TWILIO_AUTH_TOKEN")))
+
+            # Use safe temp directory
+            image_dir = "/tmp/invoices"
+            os.makedirs(image_dir, exist_ok=True)
+
+            image_path = os.path.join(image_dir, f"invoice_{message_sid}_N.jpg")
             with open(image_path, 'wb') as f:
                 f.write(response.content)
-            print(f"Zdjęcie zapisane: {image_path}, Status: {paid_status}")
-        else:
-            print(f"Błąd pobierania zdjęcia: Status {response.status_code}, Treść: {response.text}")
-    
-    return '', 200
 
-if __name__ == '__main__':
-    app.run(debug=True)
+            print(f"Saved invoice to {image_path}")
+
+            # Call your processing logic
+            process_invoice(image_path)
+
+        except Exception as e:
+            print(f"Error processing invoice: {e}")
+
+    return "OK", 200
