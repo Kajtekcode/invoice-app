@@ -1,0 +1,13 @@
+# Ignore secrets
+credentials.json
+.env
+
+# Python stuff
+__pycache__/
+*.pyc
+*.pyo
+
+# VSCode or PyCharm settings
+.vscode/
+.idea/
+.DS_Store

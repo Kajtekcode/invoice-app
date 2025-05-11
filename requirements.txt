@@ -1,0 +1,8 @@
+Flask
+gunicorn
+python-dotenv
+gspread
+oauth2client
+google-cloud-vision
+openai
+tenacity
